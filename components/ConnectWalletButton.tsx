@@ -1,4 +1,4 @@
-"use client"; // <- Add this at the very top
+"use client";
 
 import React, { useState } from "react";
 import { useMetamask } from "@/hooks/useMetamask";

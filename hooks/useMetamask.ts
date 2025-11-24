@@ -1,5 +1,6 @@
-"use client"; 
-import { getNonce, verifySignature } from "@/lib/api";
+"use client";
+
+import { SiweMessage } from "siwe";
 
 declare global {
   interface Window {
@@ -9,27 +10,40 @@ declare global {
 
 export function useMetamask() {
   async function connect() {
-    if (!window.ethereum) {
-      throw new Error("MetaMask not detected. Please install it first.");
-    }
+    if (!window.ethereum) throw new Error("MetaMask not detected.");
 
-    const accounts: string[] = await window.ethereum.request({
-      method: "eth_requestAccounts",
-    });
+    const accounts: string[] = await window.ethereum.request({ method: "eth_requestAccounts" });
     const address = accounts[0];
 
-    const { nonce } = await getNonce();
+    // Fetch nonce from backend
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/nonce`);
+    const { nonce } = await res.json();
 
-    const domain = window.location.host;
-    const message = `${domain} wants you to sign in with your Ethereum account: ${address}\nNonce: ${nonce}`;
-
-    const signature = await window.ethereum.request({
-      method: "personal_sign",
-      params: [message, address],
+    // Create proper SIWE message
+    const message = new SiweMessage({
+      domain: window.location.host,
+      address,
+      statement: "Sign in to MetaMask App",
+      uri: window.location.origin,
+      version: "1",
+      chainId: 1,
+      nonce,
     });
 
-    const res = await verifySignature(message, signature);
-    return res;
+    // Request signature
+    const signature = await window.ethereum.request({
+      method: "personal_sign",
+      params: [message.prepareMessage(), address],
+    });
+
+    // Send to backend
+    const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: message.prepareMessage(), signature }),
+    });
+
+    return verifyRes.json();
   }
 
   return { connect };
